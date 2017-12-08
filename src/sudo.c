@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2017 Todd C. Miller <Todd.Miller@sudo.ws>
+ * Copyright (c) 2009-2017 Todd C. Miller <Todd.Miller@courtesan.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -35,6 +35,10 @@
 # include <strings.h>
 #endif /* HAVE_STRINGS_H */
 #include <unistd.h>
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+#include <sys/priv.h>
+#include <sys/cred.h>
+#endif
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -139,6 +143,10 @@ main(int argc, char *argv[], char *envp[])
     struct sudo_settings *settings;
     struct plugin_container *plugin, *next;
     sigset_t mask;
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+    rid_t     roles[MAX_ROLES];
+    int nroles;
+#endif
     debug_decl_vars(main, SUDO_DEBUG_MAIN)
 
     /* Make sure fds 0-2 are open and do OS-specific initialization. */
@@ -286,6 +294,10 @@ main(int argc, char *argv[], char *envp[])
 	    if (ISSET(sudo_mode, MODE_BACKGROUND))
 		SET(command_details.flags, CD_BACKGROUND);
 	    /* Become full root (not just setuid) so user cannot kill us. */
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+	    nroles = getroles(getpid(), roles, MAX_ROLES);
+	    if (nroles <= 0)
+#endif
 	    if (setuid(ROOT_UID) == -1)
 		sudo_warn("setuid(%d)", ROOT_UID);
 	    if (ISSET(command_details.flags, CD_SUDOEDIT)) {
@@ -421,15 +433,6 @@ fill_group_list(struct user_details *ud, int system_maxgroups)
 #endif /* HAVE_GETGROUPLIST_2 */
     }
 done:
-    if (ret == -1) {
-	sudo_debug_printf(SUDO_DEBUG_ERROR|SUDO_DEBUG_ERRNO,
-	    "%s: %s: unable to get groups via getgrouplist()",
-	    __func__, ud->username);
-    } else {
-	sudo_debug_printf(SUDO_DEBUG_INFO,
-	    "%s: %s: got %d groups via getgrouplist()",
-	    __func__, ud->username, ud->ngroups);
-    }
     debug_return_int(ret);
 }
 
@@ -455,15 +458,8 @@ get_user_groups(struct user_details *ud)
 		if (ud->groups == NULL)
 		    goto oom;
 		if (getgroups(ud->ngroups, ud->groups) < 0) {
-		    sudo_debug_printf(SUDO_DEBUG_ERROR|SUDO_DEBUG_ERRNO,
-			"%s: %s: unable to get %d groups via getgroups()",
-			__func__, ud->username, ud->ngroups);
 		    free(ud->groups);
 		    ud->groups = NULL;
-		} else {
-		    sudo_debug_printf(SUDO_DEBUG_INFO,
-			"%s: %s: got %d groups via getgroups()",
-			__func__, ud->username, ud->ngroups);
 		}
 	    }
 	}
@@ -848,10 +844,23 @@ sudo_check_suid(const char *sudo)
 {
     char pathbuf[PATH_MAX];
     struct stat sb;
-    bool qualified;
+    bool qualified = FALSE;
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+    rid_t     roles[MAX_ROLES];
+    int nroles;
+#endif
     debug_decl(sudo_check_suid, SUDO_DEBUG_PCOMM)
 
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+/*
+ * if nroles >= 1 then qualified remains zero
+ * and nothing is checked
+ */
+    nroles = getroles(getpid(), roles, MAX_ROLES);
+    if ((nroles <= 0) && (geteuid() != ROOT_UID)) {
+#else
     if (geteuid() != ROOT_UID) {
+#endif
 	/* Search for sudo binary in PATH if not fully qualified. */
 	qualified = strchr(sudo, '/') != NULL;
 	if (!qualified) {
@@ -878,10 +887,20 @@ sudo_check_suid(const char *sudo)
 
 	if (qualified && stat(sudo, &sb) == 0) {
 	    /* Try to determine why sudo was not running as root. */
+	    /*
+	     * this message may need adjustment for sudo-rbac
+	     * as it is only accurate when no E-RBAC role is active
+	     */
 	    if (sb.st_uid != ROOT_UID || !ISSET(sb.st_mode, S_ISUID)) {
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+		sudo_fatalx(
+		    U_("%s is not owned by uid %d so you need an active RBAC role"),
+		    sudo, ROOT_UID);
+#else
 		sudo_fatalx(
 		    U_("%s must be owned by uid %d and have the setuid bit set"),
 		    sudo, ROOT_UID);
+#endif
 	    } else {
 		sudo_fatalx(U_("effective uid is not %d, is %s on a file system "
 		    "with the 'nosuid' option set or an NFS file system without"

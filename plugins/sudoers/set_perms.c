@@ -33,6 +33,10 @@
 #include <unistd.h>
 #ifdef _AIX
 # include <sys/id.h>
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+#include <sys/priv.h>
+#include <sys/cred.h>
+#endif
 #endif
 #include <pwd.h>
 #include <errno.h>
@@ -447,9 +451,104 @@ bad:
 }
 
 #elif defined(_AIX) && defined(ID_SAVED)
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+/*
+ * if roles then ignore "CHANGED", else regular condition
+ * i.e., if no roles set, or setxuid() has been used (which resets roles)
+ * use "standard" status rather than ignore any suppossed differences
+ * NB: may need something special to be able to switch to a user when that is the intent!
+ */
+_uid_changed(int perm)
+{
+    struct perm_state *state, *ostate = NULL;
+    char errbuf[1024];
+    const char *errstr = errbuf;
+    rid_t     roles[MAX_ROLES];
+    static int nroles = -1;
 
+    debug_decl(_uid_changed, SUDOERS_DEBUG_PERMS)
+
+    if (nroles < 0)
+        nroles = getroles(getpid(), roles, MAX_ROLES);
+
+    if (nroles > 0) /* return(0); */
+        debug_return_bool(false);
+    else {
+	if (perm_stack_depth == PERM_STACK_MAX) {
+	    errstr = N_("perm stack overflow");
+	    errno = EINVAL;
+            goto bad;
+	}
+	state = &perm_stack[perm_stack_depth];
+	if (perm != PERM_INITIAL) {
+	    if (perm_stack_depth == 0) {
+		errstr = N_("perm stack underflow");
+		errno = EINVAL;
+                goto bad;
+	    }
+	    ostate = &perm_stack[perm_stack_depth - 1];
+	}
+        debug_return_bool(state->ruid != ostate->ruid || state->euid != ostate->euid || state->suid != ostate->suid);
+    }
+bad:
+    sudo_warn("%s", U_(errstr));
+    debug_return_bool(false);
+}
+_gid_changed(int perm)
+{
+    struct perm_state *state, *ostate = NULL;
+    char errbuf[1024];
+    const char *errstr = errbuf;
+    rid_t     roles[MAX_ROLES];
+    static int nroles = -1;
+
+    debug_decl(_gid_changed, SUDOERS_DEBUG_PERMS)
+
+    if (nroles < 0)
+        nroles = getroles(getpid(), roles, MAX_ROLES);
+
+    if (nroles > 0) /* return zero */
+	debug_return_bool(false);
+    else {
+	if (perm_stack_depth == PERM_STACK_MAX) {
+	    errstr = N_("perm stack overflow");
+	    errno = EINVAL;
+	    goto bad;
+	}
+	state = &perm_stack[perm_stack_depth];
+	if (perm != PERM_INITIAL) {
+	    if (perm_stack_depth == 0) {
+		errstr = N_("perm stack underflow");
+		errno = EINVAL;
+		goto bad;
+	    }
+	    ostate = &perm_stack[perm_stack_depth - 1];
+	}
+        debug_return_bool(state->rgid != ostate->rgid || state->egid != ostate->egid || state->sgid != ostate->sgid);
+    }
+bad:
+    sudo_warn("%s", U_(errstr));
+    debug_return_bool(false);
+}
+#define UID_CHANGED _uid_changed(perm)
+#define GID_CHANGED _gid_changed(perm)
+#else
 #define UID_CHANGED (state->ruid != ostate->ruid || state->euid != ostate->euid || state->suid != ostate->suid)
 #define GID_CHANGED (state->rgid != ostate->rgid || state->egid != ostate->egid || state->sgid != ostate->sgid)
+#endif
+
+/*
+ * set_perms() and reset_perms() is modified for AIX and
+ * "Enhanced RBAC". When getroles() returns a value >0 indicates
+ * an enhanced RBAC role is active. In these cases - calls to setuidx() are
+ * nullified, i.e., the code behaves as if setuidx() calls were successful.
+ * Note: one goal of enhanced RBAC is to keep the ruid/guid accountable.
+ * Note: when using enhanced RBAC the program may be SUID, but should
+ * not be SUID 0. "AIXTOOLS" packages sudo-rbac as SUID "bin" or SUID and owner==2
+ *
+ * When getroles() returns 0 (aka no roles active) sudo processing is "default"
+ * and calls to setuidx() and setuid() must succeed - and the program must be SUID 0
+ */
 
 /*
  * Set real and effective and saved uids and gids based on perm.
@@ -555,6 +654,9 @@ set_perms(int perm)
 	    "[%d, %d, %d] -> [%d, %d, %d]", __func__,
 	    (int)ostate->ruid, (int)ostate->euid, (int)ostate->suid,
 	    (int)state->ruid, (int)state->euid, (int)state->suid);
+	/*
+	 * if successful, then getroles() will return zero the next time called
+	 */
 	if (ostate->euid != ROOT_UID || ostate->suid != ROOT_UID) {
 	    if (setuidx(ID_EFFECTIVE|ID_REAL|ID_SAVED, ROOT_UID)) {
 		snprintf(errbuf, sizeof(errbuf),
@@ -773,6 +875,10 @@ bool
 restore_perms(void)
 {
     struct perm_state *state, *ostate;
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+    rid_t     roles[MAX_ROLES];
+#endif
+
     debug_decl(restore_perms, SUDOERS_DEBUG_PERMS)
 
     if (perm_stack_depth < 2) {
@@ -791,6 +897,12 @@ restore_perms(void)
 	__func__, (int)state->rgid, (int)state->egid, (int)state->sgid,
 	(int)ostate->rgid, (int)ostate->egid, (int)ostate->sgid);
 
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+/*
+ * don't bother testing if getroles() > 0
+ */
+    if (getroles(getpid(), roles, MAX_ROLES) <= 0)
+#endif
     if (OID(ruid) != (uid_t)-1 || OID(euid) != (uid_t)-1 || OID(suid) != (uid_t)-1) {
 	if (OID(euid) == ROOT_UID) {
 	    sudo_debug_printf(SUDO_DEBUG_INFO, "%s: setuidx(ID_EFFECTIVE, %d)",
@@ -845,6 +957,12 @@ restore_perms(void)
 	    }
 	}
     }
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+/*
+ * don't bother if getroles() > 0
+ */
+    if (getroles(getpid(), roles, MAX_ROLES) <= 0)
+#endif
     if (OID(rgid) != (gid_t)-1 || OID(egid) != (gid_t)-1 || OID(sgid) != (gid_t)-1) {
 	if (OID(rgid) == OID(egid) && OID(egid) == OID(sgid)) {
 	    sudo_debug_printf(SUDO_DEBUG_INFO,
@@ -876,6 +994,12 @@ restore_perms(void)
 	    }
 	}
     }
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+/*
+ * don't bother if getroles() > 0
+ */
+    if (getroles(getpid(), roles, MAX_ROLES) <= 0)
+#endif
     if (state->gidlist != ostate->gidlist) {
 	if (sudo_setgroups(ostate->gidlist->ngids, ostate->gidlist->gids)) {
 	    sudo_warn("setgroups()");
@@ -1699,9 +1823,8 @@ runas_setgroups(void)
 	debug_return_ptr(user_gid_list);
     }
 
-    /* Only use results from a group db query, not the front end. */
     pw = runas_pw ? runas_pw : sudo_user.pw;
-    gidlist = sudo_get_gidlist(pw, ENTRY_TYPE_QUERIED);
+    gidlist = sudo_get_gidlist(pw);
     if (gidlist != NULL) {
 	if (sudo_setgroups(gidlist->ngids, gidlist->gids) < 0) {
 	    sudo_gidlist_delref(gidlist);

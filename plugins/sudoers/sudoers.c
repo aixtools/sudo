@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1993-1996, 1998-2017 Todd C. Miller <Todd.Miller@sudo.ws>
+ * Copyright (c) 1993-1996, 1998-2016 Todd C. Miller <Todd.Miller@courtesan.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -37,6 +37,10 @@
 # include <strings.h>
 #endif /* HAVE_STRINGS_H */
 #include <unistd.h>
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+#include <sys/priv.h>
+#include <sys/cred.h>
+#endif
 #include <pwd.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -191,7 +195,15 @@ sudoers_policy_init(void *info, char * const envp[])
     sudoers_setlocale(SUDOERS_LOCALE_SUDOERS, &oldlocale);
     sudo_warn_set_locale_func(sudoers_warn_setlocale);
     TAILQ_FOREACH_SAFE(nss, snl, entries, nss_next) {
+#ifdef _AIX
+	int nssopen, nssparse;
+	nssopen = nss->open(nss);
+	if (nssopen == 0)
+		nssparse = nss->parse(nss);
+	if (nssopen == 0 && nssparse == 0) {
+#else
         if (nss->open(nss) == 0 && nss->parse(nss) == 0) {
+#endif
             sources++;
             if (nss->setdefs(nss) != 0) {
                 log_warningx(SLOG_SEND_MAIL|SLOG_NO_STDERR,
@@ -427,8 +439,7 @@ sudoers_policy_main(int argc, char * const argv[], int pwflag, char *env_add[],
     case false:
 	/* Note: log_denial() calls audit for us. */
 	if (!ISSET(validated, VALIDATE_SUCCESS)) {
-	    /* Only display a denial message if no password was read. */
-	    if (!log_denial(validated, def_passwd_tries <= 0))
+	    if (!log_denial(validated, false))
 		goto done;
 	}
 	goto bad;
@@ -732,7 +743,7 @@ init_vars(char * const envp[])
 	}
     }
     if (user_gid_list == NULL)
-	user_gid_list = sudo_get_gidlist(sudo_user.pw, ENTRY_TYPE_ANY);
+	user_gid_list = sudo_get_gidlist(sudo_user.pw);
 
     /* Store initialize permissions so we can restore them later. */
     if (!set_perms(PERM_INITIAL))

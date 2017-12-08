@@ -26,6 +26,10 @@
 # include <strings.h>
 #endif /* HAVE_STRINGS_H */
 #include <unistd.h>
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+#include <sys/priv.h>
+#include <sys/cred.h>
+#endif
 #include <errno.h>
 
 #include "sudo_compat.h"
@@ -39,13 +43,24 @@ static int
 sudo_secure_path(const char *path, unsigned int type, uid_t uid, gid_t gid, struct stat *sbp)
 {
     struct stat sb;
-    int ret = SUDO_PATH_MISSING;
+    int    ret = SUDO_PATH_MISSING;
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+    rid_t  roles[MAX_ROLES];
+    int    nroles = getroles(getpid(), roles, MAX_ROLES);
+#endif
     debug_decl(sudo_secure_path, SUDO_DEBUG_UTIL)
 
     if (path != NULL && stat(path, &sb) == 0) {
 	if ((sb.st_mode & _S_IFMT) != type) {
 	    ret = SUDO_PATH_BAD_TYPE;
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+	} else if (nroles <= 0 && uid != (uid_t)-1 && sb.st_uid != uid) {
+#else
 	} else if (uid != (uid_t)-1 && sb.st_uid != uid) {
+#endif
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+	  if (geteuid() !=  sb.st_uid)
+#endif
 	    ret = SUDO_PATH_WRONG_OWNER;
 	} else if (sb.st_mode & S_IWOTH) {
 	    ret = SUDO_PATH_WORLD_WRITABLE;
