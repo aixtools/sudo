@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2017 Todd C. Miller <Todd.Miller@sudo.ws>
+ * Copyright (c) 2003-2018 Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * This code is derived from software contributed by Aaron Spangler.
  *
@@ -31,9 +31,7 @@
 # include <strings.h>
 #endif /* HAVE_STRINGS_H */
 #include <unistd.h>
-#ifdef TIME_WITH_SYS_TIME
-# include <time.h>
-#endif
+#include <time.h>
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -853,6 +851,12 @@ sudo_ldap_check_runas_user(LDAP *ld, LDAPMessage *entry, int *group_matched)
 	    break;
 	case '%':
 	    if (usergr_matches(val, runas_pw->pw_name, runas_pw))
+		ret = true;
+	    break;
+	case '\0':
+	    /* Empty RunAsUser means run as the invoking user. */
+	    if (ISSET(sudo_user.flags, RUNAS_USER_SPECIFIED) &&
+		strcmp(user_name, runas_pw->pw_name) == 0)
 		ret = true;
 	    break;
 	case 'A':
@@ -2459,7 +2463,8 @@ sudo_ldap_display_entry_short(LDAP *ld, LDAPMessage *entry, struct passwd *pw,
 	bv = ldap_get_values_len(ld, entry, "sudoRunAs");
     if (bv != NULL) {
 	for (p = bv; *p != NULL; p++) {
-	    sudo_lbuf_append(lbuf, "%s%s", p != bv ? ", " : "", (*p)->bv_val);
+	    sudo_lbuf_append(lbuf, "%s%s", p != bv ? ", " : "",
+		(*p)->bv_val[0] ? (*p)->bv_val : user_name);
 	}
 	ldap_value_free_len(bv);
 	no_runas_user = false;

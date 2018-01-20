@@ -21,7 +21,7 @@
 .\" Agency (DARPA) and Air Force Research Laboratory, Air Force
 .\" Materiel Command, USAF, under agreement number F39502-99-1-0512.
 .\"
-.TH "SUDOERS" "5" "September 26, 2017" "Sudo @PACKAGE_VERSION@" "File Formats Manual"
+.TH "SUDOERS" "5" "December 20, 2017" "Sudo @PACKAGE_VERSION@" "File Formats Manual"
 .nh
 .if n .ad l
 .SH "NAME"
@@ -217,7 +217,8 @@ file lookup is still done for root, not the user specified by
 uses per-user time stamp files for credential caching.
 Once a user has been authenticated, a record is written
 containing the user ID that was used to authenticate, the
-terminal session ID, and a time stamp
+terminal session ID, the start time of the session leader
+(or parent proccess) and a time stamp
 (using a monotonic clock if one is available).
 The user may then use
 \fBsudo\fR
@@ -2131,29 +2132,32 @@ env_editor
 If set,
 \fBvisudo\fR
 will use the value of the
-\fREDITOR\fR
-or
+\fRSUDO_EDITOR\fR,
 \fRVISUAL\fR
+or
+\fREDITOR\fR
 environment variables before falling back on the default editor list.
 Note that this may create a security hole as it allows the user to
 run any arbitrary command as root without logging.
 A safer alternative is to place a colon-separated list of editors
 in the
-\fReditor\fR
+\fIeditor\fR
 variable.
 \fBvisudo\fR
-will then only use the
-\fREDITOR\fR
-or
+will then only use
+\fRSUDO_EDITOR\fR,
 \fRVISUAL\fR
+or
+\fREDITOR\fR
 if they match a value specified in
-\fReditor\fR.
+\fIeditor\fR.
 If the
 \fIenv_reset\fR
 flag is enabled, the
-\fREDITOR\fR
-and/or
+\fRSUDO_EDITOR\fR,
 \fRVISUAL\fR
+and/or
+\fREDITOR\fR
 environment variables must be present in the
 \fIenv_keep\fR
 list for the
@@ -3288,6 +3292,14 @@ its own umask which will override the value set in
 .PP
 \fBStrings\fR:
 .TP 18n
+authfail_message
+Message that is displayed after a user fails to authenticate.
+The message may include the
+\(oq%d\(cq
+escape which will expand to the number of failed password attempts.
+If set, it overrides the default message,
+\fR%d incorrect password attempt(s)\fR.
+.TP 18n
 badpass_message
 Message that is displayed if a user enters an incorrect password.
 The default is
@@ -3301,15 +3313,17 @@ separated list of editors allowed to be used with
 \fBvisudo\fR.
 \fBvisudo\fR
 will choose the editor that matches the user's
-\fREDITOR\fR
-or
+\fRSUDO_EDITOR\fR,
 \fRVISUAL\fR
+or
+\fREDITOR\fR
 environment variable if possible, or the first editor in the
 list that exists and is executable.
 Note that the
-\fREDITOR\fR
-and
+\fRSUDO_EDITOR\fR,
 \fRVISUAL\fR
+and
+\fREDITOR\fR
 environment variables are not preserved by default when the
 \fIenv_reset\fR
 option is enabled.
@@ -3699,6 +3713,12 @@ minutes
 (\fR@timeout@\fR
 by default)
 \&.
+.TP 8n
+kernel
+The time stamp is stored in the kernel as an attribute of the terminal
+device.
+If no terminal is present, the time stamp is considered to be invalid.
+This is currently only supported on OpenBSD.
 .PP
 The default value is
 \fI@timestamp_type@\fR.
@@ -5489,31 +5509,33 @@ will be ignored and
 \fBsudoers\fR
 will log and complain.
 .PP
-Since time stamp files live in the file system, they can outlive a
-user's login session.
-As a result, a user may be able to login, run a command with
-\fBsudo\fR
-after authenticating, logout, login again, and run
-\fBsudo\fR
-without authenticating so long as the record's time stamp is within
-\fR@timeout@\fR
-minutes (or whatever value the timeout is set to in the
-\fIsudoers\fR
-file).
-When the
-\fItty_tickets\fR
-option is enabled, the time stamp record includes the device
-number of the terminal the user authenticated with.
-This provides per-tty granularity but time stamp records still
-may outlive the user's session.
-The time stamp record also includes the session ID of the process
+If the
+\fItimestamp_type\fR
+option is set to
+\(Lqtty\(Rq,
+the time stamp record includes the device number of the terminal
+the user authenticated with.
+This provides per-terminal granularity but time stamp records may still
+outlive the user's session.
+.PP
+Unless the
+\fItimestamp_type\fR
+option is set to
+\(Lqglobal\(Rq,
+the time stamp record also includes the session ID of the process
 that last authenticated.
 This prevents processes in different terminal sessions from using
 the same time stamp record.
-It also helps reduce the chance that a user will be able to run
-\fBsudo\fR
-without entering a password when logging out and back in again
-on the same terminal.
+On systems where a process's start time can be queried,
+the start time of the session leader
+is recorded in the time stamp record.
+If no terminal is present or the
+\fItimestamp_type\fR
+option is set to
+\(Lqppid\(Rq,
+the start time of the parent process is used instead.
+In most cases this will prevent a time stamp record from being re-used
+without the user entering a password when logging out and back in again.
 .SH "DEBUGGING"
 Versions 1.8.4 and higher of the
 \fBsudoers\fR
@@ -5641,6 +5663,7 @@ sudo.conf(@mansectform@),
 sudoers.ldap(@mansectform@),
 sudo(@mansectsu@),
 sudo_plugin(@mansectform@),
+sudoers_timestamp(@mansectform@),
 visudo(@mansectsu@)
 .SH "AUTHORS"
 Many people have worked on

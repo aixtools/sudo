@@ -24,7 +24,6 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
-#include <sys/time.h>
 #include <sys/resource.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,9 +45,7 @@
 #include <signal.h>
 #include <grp.h>
 #include <pwd.h>
-#ifdef TIME_WITH_SYS_TIME
-# include <time.h>
-#endif
+#include <time.h>
 #ifdef HAVE_SELINUX
 # include <selinux/selinux.h>		/* for is_selinux_enabled() */
 #endif

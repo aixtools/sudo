@@ -2316,7 +2316,6 @@ dnl
 dnl Header file checks
 dnl
 AC_HEADER_DIRENT
-AC_HEADER_TIME
 AC_HEADER_STDBOOL
 AC_HEADER_MAJOR
 AC_CHECK_HEADERS_ONCE([netgroup.h paths.h spawn.h utmpx.h wordexp.h sys/sockio.h sys/bsdtypes.h sys/select.h sys/stropts.h sys/sysmacros.h])
@@ -2528,8 +2527,8 @@ if test "$utmp_style" = "LEGACY"; then
     AC_CHECK_FUNCS([fseeko])
 fi
 
-AC_CHECK_FUNCS([sysctl], [AC_CHECK_MEMBERS([struct kinfo_proc.ki_tdev], [],
-    [
+AC_CHECK_FUNCS([sysctl], [AC_CHECK_FUNCS([devname])
+    AC_CHECK_MEMBERS([struct kinfo_proc.ki_tdev], [], [
 	AC_CHECK_MEMBERS([struct kinfo_proc2.p_tdev], [], [
 	    AC_CHECK_MEMBERS([struct kinfo_proc.p_tdev], [], [
 		AC_CHECK_MEMBERS([struct kinfo_proc.kp_eproc.e_tdev], [], [], [

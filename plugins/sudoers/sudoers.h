@@ -136,8 +136,7 @@ struct sudo_user {
 #define FLAG_NO_CHECK		0x080
 #define FLAG_NON_INTERACTIVE	0x100
 #define FLAG_BAD_PASSWORD	0x200
-#define FLAG_AUTH_ERROR		0x400
-#define FLAG_NOPASSWD		0x800
+#define FLAG_NOPASSWD		0x400
 
 /*
  * find_path()/set_cmnd() return values
@@ -265,6 +264,7 @@ int verify_user(struct passwd *pw, char *prompt, int validated, struct sudo_conv
 int sudo_auth_begin_session(struct passwd *pw, char **user_env[]);
 int sudo_auth_end_session(struct passwd *pw);
 int sudo_auth_init(struct passwd *pw);
+int sudo_auth_approval(struct passwd *pw, int validated);
 int sudo_auth_cleanup(struct passwd *pw);
 
 /* set_perms.c */
@@ -403,8 +403,8 @@ bool cb_group_plugin(const union sudo_defs_val *sd_un);
 extern const char *path_plugin_dir;
 
 /* editor.c */
-char *resolve_editor(const char *ed, size_t edlen, int nfiles, char **files,
-    int *argc_out, char ***argv_out, char * const *whitelist);
+char *find_editor(int nfiles, char **files, int *argc_out, char ***argv_out,
+     char * const *whitelist, const char **env_editor, bool env_error);
 
 /* mkdir_parents.c */
 bool sudo_mkdir_parents(char *path, uid_t uid, gid_t gid, mode_t mode, bool quiet);

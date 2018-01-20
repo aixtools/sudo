@@ -14,12 +14,12 @@ What's new in Sudo 1.8.22
  * Fixed a crash when the system's host name is not set.
    Bug #807
 
- * The sudoers2ldif script now handle #include and #includedir 
+ * The sudoers2ldif script now handles #include and #includedir 
    directives.
 
  * Fixed a bug where sudo would silently exit when the command was
    not allowed by sudoers and the "passwd_tries" sudoers option
-   was set to a value less than 1.
+   was set to a value less than one.
 
  * Fixed a bug with the "listpw" and "verifypw" sudoers options and
    multiple sudoers sources.  If the option is set to "all", a
@@ -49,6 +49,39 @@ What's new in Sudo 1.8.22
    I/O logging was enabled.  If the TOSTOP terminal flag is set,
    sudo will suspend the command (and then itself) with the SIGTTOU
    signal.
+
+ * A new "authfail_message" sudoers option that overrides the
+   default "N incorrect password attempt(s)".
+
+ * An empty sudoRunAsUser attribute in the LDAP and SSSD backends
+   will now match the invoking user.  This is more consistent with
+   how an empty runas user in the sudoers file is treated.
+
+ * Documented that in check mode, visudo does not check the owner/mode
+   on files specified with the -f flag.  Bug #809.
+
+ * It is now an error to specify the runas user as an empty string
+   on the command line.  Previously, an empty runas user was treated
+   the same as an unspecified runas user.  Bug #817.
+
+ * When "timestamp_type" option is set to "tty" and a terminal is
+   present, the time stamp record will now include the start time
+   of the session leader.  When the "timestamp_type" option is set
+   to "ppid" or when no terminal is available, the start time of
+   the parent process is used instead.  This significantly reduces
+   the likelihood of a time stamp record being re-used when a user
+   logs out and back in again.  Bug #818.
+
+ * The sudoers time stamp file format is now documented in the new
+   sudoers_timestamp manual.
+
+ * The "timestamp_type" option now takes a "kernel" value on OpenBSD
+   systems.  This causes the tty-based time stamp to be stored in
+   the kernel instead of on the file system.  If no tty is present,
+   the time stamp is considered to be invalid.
+
+ * Visudo will now use the SUDO_EDITOR environment variable (if
+   present) in addition to VISUAL and EDITOR.
 
 What's new in Sudo 1.8.21p2
 

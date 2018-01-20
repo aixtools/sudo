@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008, 2010-2017 Todd C. Miller <Todd.Miller@sudo.ws>
+ * Copyright (c) 2004-2008, 2010-2018 Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,7 +18,6 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/time.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <stdio.h>
@@ -29,6 +28,7 @@
 #ifdef HAVE_STRINGS_H
 # include <strings.h>
 #endif /* HAVE_STRINGS_H */
+#include <time.h>
 #include <unistd.h>
 #include <ctype.h>
 #include <errno.h>
@@ -37,9 +37,6 @@
 #include <signal.h>
 #include <errno.h>
 #include <fcntl.h>
-#ifdef TIME_WITH_SYS_TIME
-# include <time.h>
-#endif
 
 #include "sudo.h"
 #include "sudo_exec.h"
@@ -175,7 +172,7 @@ sudo_openat(int dfd, const char *path, int flags, mode_t mode)
 
     /* Restore cwd */
     if (fchdir(odfd) == -1)
-	sudo_fatal(_("unable to restore current working directory"));
+	sudo_fatal(U_("unable to restore current working directory"));
     close(odfd);
 
     debug_return_int(fd);
@@ -264,7 +261,7 @@ done:
     /* Restore cwd */
     if (odfd != -1) {
 	if (fchdir(odfd) == -1)
-	    sudo_fatal(_("unable to restore current working directory"));
+	    sudo_fatal(U_("unable to restore current working directory"));
 	close(odfd);
     }
 
@@ -812,11 +809,11 @@ selinux_edit_create_tfiles(struct command_details *command_details,
     case SESH_SUCCESS:
 	break;
     case SESH_ERR_BAD_PATHS:
-	sudo_fatalx(_("sesh: internal error: odd number of paths"));
+	sudo_fatalx(U_("sesh: internal error: odd number of paths"));
     case SESH_ERR_NO_FILES:
-	sudo_fatalx(_("sesh: unable to create temporary files"));
+	sudo_fatalx(U_("sesh: unable to create temporary files"));
     default:
-	sudo_fatalx(_("sesh: unknown error %d"), rc);
+	sudo_fatalx(U_("sesh: unknown error %d"), rc);
     }
 
     /* Restore saved command_details. */
@@ -906,15 +903,15 @@ selinux_edit_copy_tfiles(struct command_details *command_details,
 	    ret = 0;
 	    break;
 	case SESH_ERR_NO_FILES:
-	    sudo_warnx(_("unable to copy temporary files back to their original location"));
+	    sudo_warnx(U_("unable to copy temporary files back to their original location"));
 	    sudo_warnx(U_("contents of edit session left in %s"), edit_tmpdir);
 	    break;
 	case SESH_ERR_SOME_FILES:
-	    sudo_warnx(_("unable to copy some of the temporary files back to their original location"));
+	    sudo_warnx(U_("unable to copy some of the temporary files back to their original location"));
 	    sudo_warnx(U_("contents of edit session left in %s"), edit_tmpdir);
 	    break;
 	default:
-	    sudo_warnx(_("sesh: unknown error %d"), rc);
+	    sudo_warnx(U_("sesh: unknown error %d"), rc);
 	    break;
 	}
     }
