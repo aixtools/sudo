@@ -1824,7 +1824,7 @@ case "$host" in
 		RC_LINK=/etc/rc.d/rc2.d/S90sudo
 
 		# AIX-specific functions
-		AC_CHECK_FUNCS([getuserattr setrlimit64])
+		AC_CHECK_FUNCS([getroles getuserattr setrlimit64])
 		AC_CHECK_FUNCS([setauthdb],
 		    [AC_CHECK_TYPES([authdb_t], [], [], [#include <usersec.h>])])
 

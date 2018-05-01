@@ -308,6 +308,9 @@
 /* Define to 1 if you have the `getresuid' function. */
 #undef HAVE_GETRESUID
 
+/* Define to 1 if you have the `getroles' function. */
+#undef HAVE_GETROLES
+
 /* Define to 1 if you have the `getspnam' function (SVR4-style shadow
    passwords). */
 #undef HAVE_GETSPNAM

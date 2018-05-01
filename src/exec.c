@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2017 Todd C. Miller <Todd.Miller@sudo.ws>
+ * Copyright (c) 2009-2017 Todd C. Miller <Todd.Miller@courtesan.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -28,6 +28,10 @@
 # include <strings.h>
 #endif /* HAVE_STRINGS_H */
 #include <unistd.h>
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+#include <sys/priv.h>
+#include <sys/cred.h>
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <pwd.h>
@@ -101,9 +105,23 @@ restore_nproc(void)
 static bool
 exec_setup(struct command_details *details, const char *ptyname, int ptyfd)
 {
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+/*
+ * adjusted runas to skip setuid() family of calls if enhanced RBAC is active
+ * initially it is expected that PV_ROOT is assigned using a command such as
+ * setsecattr -c inhertprivs=PV_ROOT /opt/bin/sudo
+ * and this will cause all children to run with "ROOT" privlidges
+ * Phase 2: assign specific privs to be inherited by child process
+ */
+    rid_t     roles[MAX_ROLES];
+    int	nroles;
+#endif
     bool ret = false;
     debug_decl(exec_setup, SUDO_DEBUG_EXEC)
 
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+    nroles = getroles(getpid(), roles, MAX_ROLES);
+#endif
 #ifdef HAVE_SELINUX
     if (ISSET(details->flags, CD_RBAC_ENABLED)) {
 	if (selinux_setup(details->selinux_role, details->selinux_type,
@@ -212,6 +230,9 @@ exec_setup(struct command_details *details, const char *ptyname, int ptyfd)
 	goto done;
     }
 #elif defined(HAVE_SETREUID)
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+    if (nroles <= 0)
+#endif
     if (setreuid(details->uid, details->euid) != 0) {
 	sudo_warn(U_("unable to change to runas uid (%u, %u)"),
 	    (unsigned int)details->uid, (unsigned int)details->euid);
@@ -219,6 +240,9 @@ exec_setup(struct command_details *details, const char *ptyname, int ptyfd)
     }
 #else
     /* Cannot support real user ID that is different from effective user ID. */
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+    if (nroles <= 0)
+#endif
     if (setuid(details->euid) != 0) {
 	sudo_warn(U_("unable to change to runas uid (%u, %u)"),
 	    (unsigned int)details->euid, (unsigned int)details->euid);
@@ -380,37 +404,34 @@ sudo_execute(struct command_details *details, struct command_status *cstat)
     }
 
     /*
-     * Run the command in a new pty if there is an I/O plugin or the policy
-     * has requested a pty.  If /dev/tty is unavailable and no I/O plugin
-     * is configured, this returns false and we run the command without a pty.
+     * If we have an I/O plugin or the policy plugin has requested one, we
+     * need to allocate a pty.
      */
     if (!TAILQ_EMPTY(&io_plugins) || ISSET(details->flags, CD_USE_PTY)) {
-	if (exec_pty(details, cstat))
-	    goto done;
-    }
-
-    /*
-     * If we are not running the command in a pty, we were not invoked
-     * as sudoedit, there is no command timeout and there is no close
-     * function, just exec directly.  Only returns on error.
-     */
-    if (!ISSET(details->flags, CD_SET_TIMEOUT|CD_SUDOEDIT) &&
+	/*
+	 * Run the command in a new pty, wait for it to finish and
+	 * send the plugin the exit status.
+	 */
+	exec_pty(details, cstat);
+    } else if (!ISSET(details->flags, CD_SET_TIMEOUT|CD_SUDOEDIT) &&
 	policy_plugin.u.policy->close == NULL) {
+	/*
+	 * If we are not running the command in a pty, we were not invoked
+	 * as sudoedit, there is no command timeout and there is no close
+	 * function, just exec directly.  Only returns on error.
+	 */
 	if (!sudo_terminated(cstat)) {
 	    exec_cmnd(details, -1);
 	    cstat->type = CMD_ERRNO;
 	    cstat->val = errno;
 	}
-	goto done;
+    } else {
+	/*
+	 * No pty but we need to wait for the command to finish to
+	 * send the plugin the exit status.
+	 */
+	exec_nopty(details, cstat);
     }
-
-    /*
-     * Run the command in the existing tty (if any) and wait for it to finish.
-     */
-    exec_nopty(details, cstat);
-
-done:
-    /* The caller will run any plugin close functions. */
     debug_return_int(cstat->type == CMD_ERRNO ? -1 : 0);
 }
 

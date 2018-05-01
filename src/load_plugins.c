@@ -17,6 +17,11 @@
 #include <config.h>
 
 #include <sys/types.h>
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+#include <sys/priv.h>
+#include <unistd.h>
+#include <sys/cred.h>
+#endif
 #include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -109,6 +114,10 @@ sudo_check_plugin(struct plugin_info *info, char *fullpath, size_t pathsize)
 {
     struct stat sb;
     bool ret = false;
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+    rid_t       roles[MAX_ROLES];
+    int nroles = getroles(getpid(), roles, MAX_ROLES);
+#endif
     debug_decl(sudo_check_plugin, SUDO_DEBUG_PLUGIN)
 
     if (sudo_stat_plugin(info, fullpath, pathsize, &sb) != 0) {
@@ -119,7 +128,10 @@ sudo_check_plugin(struct plugin_info *info, char *fullpath, size_t pathsize)
 	    info->path);
 	goto done;
     }
-    if (sb.st_uid != ROOT_UID) {
+#if defined(HAVE_GETROLES) && defined(_AIX61)
+    if (nroles <= 0)
+#endif
+      if (sb.st_uid != ROOT_UID) {
 	sudo_warnx(U_("error in %s, line %d while loading plugin \"%s\""),
 	    _PATH_SUDO_CONF, info->lineno, info->symbol_name);
 	sudo_warnx(U_("%s must be owned by uid %d"), fullpath, ROOT_UID);
