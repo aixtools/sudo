@@ -1824,7 +1824,7 @@ runas_setgroups(void)
     }
 
     pw = runas_pw ? runas_pw : sudo_user.pw;
-    gidlist = sudo_get_gidlist(pw);
+    gidlist = sudo_get_gidlist(pw, ENTRY_TYPE_QUERIED);
     if (gidlist != NULL) {
 	if (sudo_setgroups(gidlist->ngids, gidlist->gids) < 0) {
 	    sudo_gidlist_delref(gidlist);
